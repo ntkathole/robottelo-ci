@@ -336,7 +336,7 @@ satellite capsule import-classes --id 1 --environment-id 1
 
 # Populate the RHEL6 and RHEL7 OS ID
 
-RHEL7_OS_ID=$(satellite --csv os list | grep "RedHat 7" | cut -d ',' -f1 | grep -vi "^id")
+RHEL7_OS_ID=$(satellite --csv os list | grep "RHEL Server 7" | cut -d ',' -f1 | grep -vi "^id")
 echo "RHEL7 OS ID is: ${RHEL7_OS_ID}"
 
 RHEL6_OS_ID=$(satellite --csv os list | grep "RedHat 6" | cut -d ',' -f1 | grep -vi "^id")
