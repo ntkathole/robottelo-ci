@@ -14,14 +14,13 @@
       - merge_request
     scm:
       - foreman_gitlab
-    wrappers:
-      - default_xvfb
     triggers:
       - gitlab_build_on_change
     builders:
       - merge_request
       - test_develop
     publishers:
+      - gitlab-notifier
       - gemset_cleanup
       - junit:
           results: 'jenkins/reports/unit/*.xml'

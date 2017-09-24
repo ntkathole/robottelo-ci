@@ -16,8 +16,11 @@ def version_map = branch_map[release_branch]
 
 node('rhel') {
 
-    stage("Setup Environment") {
+    snapperStage("Setup Environment") {
 
+        deleteDir()
+
+        setupAnsibleEnvironment {}
 
         dir(repo_name) {
             withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'jenkins-gitlab', passwordVariable: 'PASSWORD', usernameVariable: 'USERNAME']]) {
@@ -29,26 +32,24 @@ node('rhel') {
 
         dir('tool_belt') {
             git url: "https://${env.GIT_HOSTNAME}/satellite6/tool_belt.git", branch: 'master'
-            sh 'bundle install'
+            sh 'bundle install --without=development'
         }
-
-        setupAnsibleEnvironment {}
     }
 
-    stage("Identify Bugs") {
+    snapperStage("Identify Bugs") {
 
         def releaseTag = ''
 
-        dir(repo_name) {
-            sh "../tool_belt/tools.rb release find-bz-ids --output-file bz_ids.json"
+        dir('tool_belt') {
+            sh "bundle exec ./tools.rb release find-bz-ids --dir ../${repo_name} --output-file bz_ids.json"
             archive 'bz_ids.json'
         }
     }
 
 
-    stage("Move Bugs to Modified") {
+    snapperStage("Move Bugs to Modified") {
 
-        dir(repo_name) {
+        dir('tool_belt') {
             def ids = []
             def bzs = readFile 'bz_ids.json'
             bzs = new JsonSlurper().parseText(bzs)
@@ -62,16 +63,17 @@ node('rhel') {
 
                 withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'bugzilla-credentials', passwordVariable: 'BZ_PASSWORD', usernameVariable: 'BZ_USERNAME']]) {
 
-                    sh "../tool_belt/tools.rb bugzilla move-to-modified --username ${env.BZ_USERNAME} --password ${env.BZ_PASSWORD} --bug ${ids} --version ${version_map['version']}"
+                    sh "bundle exec ./tools.rb bugzilla move-to-modified --username ${env.BZ_USERNAME} --password ${env.BZ_PASSWORD} --bug ${ids} --version ${version_map['version']}"
 
                 }
+
             }
         }
     }
 
-    stage("Set External Tracker for Commit") {
+    snapperStage("Set External Tracker for Commit") {
 
-        dir(repo_name) {
+        dir('tool_belt') {
             def commits = readFile 'bz_ids.json'
             commits = new JsonSlurper().parseText(commits)
 
@@ -82,7 +84,7 @@ node('rhel') {
 
                 withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'bugzilla-credentials', passwordVariable: 'BZ_PASSWORD', usernameVariable: 'BZ_USERNAME']]) {
 
-                    sh "../tool_belt/tools.rb bugzilla set-gitlab-tracker --username ${env.BZ_USERNAME} --password ${env.BZ_PASSWORD} --external-tracker \"${hash}\" --bug ${id}"
+                        sh "bundle exec ./tools.rb bugzilla set-gitlab-tracker --username ${env.BZ_USERNAME} --password ${env.BZ_PASSWORD} --external-tracker \"${hash}\" --bug ${id} --version ${version_map['version']}"
 
                 }
             }
@@ -90,17 +92,21 @@ node('rhel') {
 
     }
 
-    stage("Bump Version") {
+    snapperStage("Bump Version") {
 
         withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: 'jenkins-gitlab', passwordVariable: 'PASSWORD', usernameVariable: 'USERNAME']]) {
 
             dir(repo_name) {
+                def releaseTag = ''
+
                 sh "git config user.email 'sat6-jenkins@redhat.com'"
                 sh "git config user.name 'Jenkins'"
 
-                sh "../tool_belt/tools.rb release bump-version --output-file version.json"
-                archive "version.json"
-                releaseTag = readFile 'version.json'
+                dir('../tool_belt') {
+                    sh "bundle exec ./tools.rb release bump-version --dir ../${repo_name} --output-file version.json"
+                    archive "version.json"
+                    releaseTag = readFile 'version.json'
+                }
 
                 sh "git push origin ${release_branch}"
                 sh "git push origin ${releaseTag}"
@@ -110,30 +116,41 @@ node('rhel') {
     }
 
 
-    stage("Build Source") {
+    snapperStage("Build Source") {
+
+        dir('tool_belt') {
+            sh "bundle exec ./tools.rb release build-source --dir ../${repo_name} --type ${sourceType} --output-file artifact"
+        }
+
+    }
+
+    snapperStage("Upload Source") {
 
         def artifact = ''
         def artifact_path = ''
 
-        dir(repo_name) {
-            sh "../tool_belt/tools.rb release build-source --type ${sourceType} --output-file artifact"
-            artifact = readFile 'artifact'
-
+        dir('tool_belt') {
             artifact = readFile('artifact').replace('"', '')
+        }
+
+        dir(repo_name) {
             artifact_path = sh(returnStdout: true, script: 'pwd').trim()
             artifact_path = artifact_path + '/' + artifact
         }
+
         runPlaybook {
             playbook = 'playbooks/upload_package.yml'
             extraVars = [
-                'file': artifact_path,
+                'artifact': artifact_path,
                 'repo': version_map['repo'],
                 'product': 'Source Files',
                 'organization': 'Sat6-CI'
             ]
         }
 
-        sh "rm ${artifact_path}"
+        dir('tool_belt') {
+            sh "rm ${artifact_path}"
+        }
     }
 
 }

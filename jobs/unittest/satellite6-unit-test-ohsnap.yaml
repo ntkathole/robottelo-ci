@@ -18,11 +18,12 @@
       - merge_request
       - test_ohsnap
     publishers:
+      - gitlab-notifier
       - gemset_cleanup
       - cobertura:
           report-file: 'coverage/coverage.xml'
           targets:
-            - lines:
+            - line:
                 healthy: 80
                 unhealthy: 0
                 failing: 0

@@ -156,7 +156,7 @@ satellite subscription upload --organization-id "${ORG}" --file "${HOME}"/manife
 
 # Enable Red Hat repositories
 # Kickstart trees
-satellite repository-set enable --name="Red Hat Enterprise Linux 7 Server (Kickstart)" --basearch="x86_64" --releasever="7.3" --product "Red Hat Enterprise Linux Server" --organization-id="${ORG}"
+satellite repository-set enable --name="Red Hat Enterprise Linux 7 Server (Kickstart)" --basearch="x86_64" --releasever="7.4" --product "Red Hat Enterprise Linux Server" --organization-id="${ORG}"
 satellite repository-set enable --name="Red Hat Enterprise Linux 6 Server (Kickstart)" --basearch="x86_64" --releasever="6.8" --product "Red Hat Enterprise Linux Server" --organization-id="${ORG}"
 
 # 'Base' OS RPMs
@@ -175,8 +175,12 @@ fi
 
 # Synchronize all repositories except for Puppet repositories which don't have URLs
 for repo in $(satellite --csv repository list --organization-id="${ORG}" --per-page=1000 | grep -vi 'puppet' | cut -d ',' -f 1 | grep -vi '^ID'); do
-    satellite repository synchronize --id "${repo}" --organization-id="${ORG}"
+    satellite repository synchronize --id "${repo}" --organization-id="${ORG}" --async
 done
+
+# Check the async tasks for completion.
+for id in `satellite --csv task list | grep -i synchronize | awk -F "," '{print $1}'`; do satellite task progress --id $id; done
+
 
 # Create Repos and Sync Repositories.
 # Create both Tools for RHEL6 and RHEL7 and Capsule for RHEL6 and RHEL7
@@ -184,8 +188,10 @@ done
 if [ "${SATELLITE_DISTRIBUTION}" != "GA" ]; then
     create-repo "${RHEL6_TOOLS_PRD}" "${RHEL6_TOOLS_REPO}" "${RHEL6_TOOLS_URL}"
     create-repo "${RHEL7_TOOLS_PRD}" "${RHEL7_TOOLS_REPO}" "${RHEL7_TOOLS_URL}"
-    create-repo "${SAT6C6_PRODUCT}" "${CAPSULE6_REPO}" "${CAPSULE6_URL}"
     create-repo "${SAT6C7_PRODUCT}" "${CAPSULE7_REPO}" "${CAPSULE7_URL}"
+    if [ "${SAT_VERSION}" != "6.3" ]; then
+        create-repo "${SAT6C6_PRODUCT}" "${CAPSULE6_REPO}" "${CAPSULE6_URL}"
+    fi
 fi
 
 #Create content views
@@ -195,7 +201,7 @@ satellite content-view create --name 'Capsule RHEL 7 CV' --organization-id="${OR
 
 # Add content to content views
 # RHEL 7
-satellite  content-view add-repository --name='RHEL 7 CV' --organization-id="${ORG}" --product='Red Hat Enterprise Linux Server' --repository='Red Hat Enterprise Linux 7 Server Kickstart x86_64 7.3'
+satellite  content-view add-repository --name='RHEL 7 CV' --organization-id="${ORG}" --product='Red Hat Enterprise Linux Server' --repository='Red Hat Enterprise Linux 7 Server Kickstart x86_64 7.4'
 satellite  content-view add-repository --name='RHEL 7 CV' --organization-id="${ORG}" --product='Red Hat Enterprise Linux Server' --repository='Red Hat Enterprise Linux 7 Server RPMs x86_64 7Server'
 satellite  content-view add-repository --name='RHEL 7 CV' --organization-id="${ORG}" --product="${RHEL7_TOOLS_PRD}" --repository="${RHEL7_TOOLS_REPO}"
 satellite  content-view publish --name='RHEL 7 CV' --organization-id="${ORG}"
@@ -330,7 +336,7 @@ satellite capsule import-classes --id 1 --environment-id 1
 
 # Populate the RHEL6 and RHEL7 OS ID
 
-RHEL7_OS_ID=$(satellite --csv os list | grep "RedHat 7" | cut -d ',' -f1 | grep -vi "^id")
+RHEL7_OS_ID=$(satellite --csv os list | grep "RHEL Server 7" | cut -d ',' -f1 | grep -vi "^id")
 echo "RHEL7 OS ID is: ${RHEL7_OS_ID}"
 
 RHEL6_OS_ID=$(satellite --csv os list | grep "RedHat 6" | cut -d ',' -f1 | grep -vi "^id")
@@ -340,11 +346,11 @@ echo "RHEL6 OS ID is: ${RHEL6_OS_ID}"
 if [ "${SAT_VERSION}" = "6.3" ]; then
     # Create Host-Groups and associate activation key as a parameter.
 
-    satellite hostgroup create --name='RHEL 6 Server 64-bit HG' --content-view='RHEL 6 CV' --environment-id="${PUPPET_ENV}" --lifecycle-environment='DEV' --content-source-id="${CAPSULE_ID}" --puppet-proxy="$(hostname)" --puppet-ca-proxy="$(hostname)" --query-organization-id="${ORG}" --puppet-classes='access_insights_client,foreman_scap_client' --domain-id="${DOMAIN_ID}" --subnet="${SUBNET_NAME}" --architecture='x86_64' --operatingsystem-id="${RHEL6_OS_ID}" --partition-table='Kickstart default' --location-ids="${LOC}"
+    satellite hostgroup create --name='RHEL 6 Server 64-bit HG' --content-view='RHEL 6 CV' --environment-id="${PUPPET_ENV}" --lifecycle-environment='DEV' --content-source-id="${CAPSULE_ID}" --puppet-proxy="$(hostname)" --puppet-ca-proxy="$(hostname)" --query-organization-id="${ORG}" --puppet-classes='access_insights_client,foreman_scap_client' --domain-id="${DOMAIN_ID}" --subnet="${SUBNET_NAME}" --architecture='x86_64' --operatingsystem-id="${RHEL6_OS_ID}" --partition-table='Kickstart default' --location-ids="${LOC}" --pxe-loader 'PXELinux BIOS'
 
     satellite hostgroup set-parameter --hostgroup='RHEL 6 Server 64-bit HG' --name='kt_activation_keys' --value='ak-rhel-6'
 
-    satellite hostgroup create --name='RHEL 7 Server 64-bit HG' --content-view='RHEL 7 CV' --environment-id="${PUPPET_ENV}" --lifecycle-environment='DEV' --content-source-id="${CAPSULE_ID}" --puppet-proxy="$(hostname)" --puppet-ca-proxy="$(hostname)" --query-organization-id="${ORG}" --puppet-classes='access_insights_client,foreman_scap_client' --domain-id="${DOMAIN_ID}" --subnet="${SUBNET_NAME}" --architecture='x86_64' --operatingsystem-id="${RHEL7_OS_ID}" --partition-table='Kickstart default' --location-ids="${LOC}"
+    satellite hostgroup create --name='RHEL 7 Server 64-bit HG' --content-view='RHEL 7 CV' --environment-id="${PUPPET_ENV}" --lifecycle-environment='DEV' --content-source-id="${CAPSULE_ID}" --puppet-proxy="$(hostname)" --puppet-ca-proxy="$(hostname)" --query-organization-id="${ORG}" --puppet-classes='access_insights_client,foreman_scap_client' --domain-id="${DOMAIN_ID}" --subnet="${SUBNET_NAME}" --architecture='x86_64' --operatingsystem-id="${RHEL7_OS_ID}" --partition-table='Kickstart default' --location-ids="${LOC}" --pxe-loader 'PXELinux BIOS'
 
     satellite hostgroup set-parameter --hostgroup='RHEL 7 Server 64-bit HG' --name='kt_activation_keys' --value='ak-rhel-7'
 else

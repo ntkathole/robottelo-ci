@@ -6,7 +6,8 @@
         username: "{{ username }}"
         password: "{{ password }}"
         server_url: "{{ server }}"
-        file: "{{ file }}"
+        src: "{{ artifact }}"
         repository: "{{ repo }}"
         product: "{{ product }}"
         organization: "{{ organization }}"
+        verify_ssl: False
