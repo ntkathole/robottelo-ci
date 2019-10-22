@@ -339,52 +339,24 @@
 
 - job-template:
     name: 'automation-upgraded-{satellite_version}-end-to-end-{os}'
-    node: sat6-{satellite_version}
-    build-discarder:
-        num-to-keep: 16
+    project-type: pipeline
+    sandbox: true
     properties:
         - satellite6-upgrade-build_blocker:
             satellite_version: "{satellite_version}"
             os: "{os}"
         - build-discarder:
             num-to-keep: 16
-    parameters:
-        - satellite6-automation-parameters
-    scm:
-        - git:
-            url: https://github.com/SatelliteQE/robottelo.git
-            branches:
-                - '{scm-branch}'
-            skip-tag: true
-    wrappers:
-        - satellite6-automation-wrappers
         - inject:
             properties-content: |
                 SATELLITE_VERSION={satellite_version}
                 ENDPOINT=end-to-end
                 OS={os}
-        - satellite6-maskpassword-wrappers
-        - satellite6-sauce-ondemand-wrappers
-    builders:
-        - satellite6-upgrade-tiers-builders
-        - shell: echo "POLARION_RELEASE=${{BUILD_LABEL%%-*}}" > build_env.txt
-        - inject:
-            properties-file: build_env.txt
-        - trigger-builds:
-            - project: 'report-upgrade-tier-automation-results-{satellite_version}-{os}'
-              predefined-parameters: |
-                  BUILD_LABEL=${{BUILD_LABEL}}
-        - trigger-builds:
-            - project: 'polarion-upgraded-test-run-{satellite_version}-{os}'
-              predefined-parameters: |
-                  TEST_RUN_ID=$BUILD_LABEL {os} upgrade
-                  POLARION_RELEASE=$POLARION_RELEASE upgrade
-    publishers:
-        - satellite6-automation-mails
-        - satellite6-automation-publishers
-        - archive:
-            artifacts: 'robottelo*.log,*-results.xml,robottelo.properties'
-            allow-empty: true
+    parameters:
+        - satellite6-automation-parameters
+    dsl:
+      !include-raw-escape:
+        - workflows/qe/automation-upgraded-end-to-end.groovy
 
 - job-template:
     name: 'report-upgrade-tier-automation-results-{satellite_version}-{os}'
